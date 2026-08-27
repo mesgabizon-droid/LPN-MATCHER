@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Listo</h2>
+  <p>{{ n_excel }} renglones del pedido comparados contra {{ n_pdf }} etiquetas del PDF.</p>
+
+  <table class="resumen">
+    <thead><tr><th>Metodo</th><th>Cantidad</th></tr></thead>
+    <tbody>
+      {% for metodo, cantidad in resumen.items() %}
+      <tr>
+        <td>{{ metodo }}</td>
+        <td>{{ cantidad }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <a class="btn" href="{{ url_for('descargar', archivo=archivo) }}">Descargar Excel con LPN</a>
+  <p class="hint small">Revisa en el archivo las filas resaltadas en amarillo (baja confianza) o rojo (sin coincidencia).</p>
+  <a class="link" href="{{ url_for('index') }}">&larr; Procesar otro pedido</a>
+</div>
+{% endblock %}

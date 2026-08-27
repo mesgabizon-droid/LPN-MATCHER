@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<form class="card" method="post" action="{{ url_for('procesar') }}" enctype="multipart/form-data">
+  <div class="field">
+    <label for="pedido">1. Excel de pedido (.xls o .xlsx)</label>
+    <input type="file" id="pedido" name="pedido" accept=".xls,.xlsx" required>
+    <p class="hint">Columnas esperadas: Codigo, Ean13, Codigo Cliente, Descripcion, Unidad, Cantidad, Cajas Pedido, Precio Lista.</p>
+  </div>
+
+  <div class="field">
+    <label for="etiquetas">2. PDF de etiquetas (LPN)</label>
+    <input type="file" id="etiquetas" name="etiquetas" accept="application/pdf" required>
+    <p class="hint">El PDF con las etiquetas que trae el codigo de barras LPN por pagina.</p>
+  </div>
+
+  <button type="submit" class="btn">Emparejar y generar Excel</button>
+  <p class="hint small">El procesamiento usa OCR sobre el PDF, puede tardar uno o varios minutos segun el numero de etiquetas.</p>
+</form>
+{% endblock %}
