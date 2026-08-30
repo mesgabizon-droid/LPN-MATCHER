@@ -16,8 +16,11 @@
     </tbody>
   </table>
 
-  <a class="btn" href="{{ url_for('descargar', archivo=archivo) }}">Descargar Excel con LPN</a>
-  <p class="hint small">Revisa en el archivo las filas resaltadas en amarillo (baja confianza) o rojo (sin coincidencia).</p>
+  <div class="botones">
+    <a class="btn" href="{{ url_for('descargar', archivo=archivo_pdf) }}">Descargar PDF con Codigo (para imprimir y pegar)</a>
+    <a class="btn btn-secundario" href="{{ url_for('descargar', archivo=archivo_xlsx) }}">Descargar Excel con LPN</a>
+  </div>
+  <p class="hint small">En el PDF, cada etiqueta trae un recuadro con el Codigo de la caja (verde/azul = coincidencia confiable, amarillo = revisar, rojo = sin coincidencia). En el Excel se resaltan las mismas filas.</p>
   <a class="link" href="{{ url_for('index') }}">&larr; Procesar otro pedido</a>
 </div>
 {% endblock %}

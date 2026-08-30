@@ -84,6 +84,22 @@ header h1 span {
   background: var(--blue-dark);
 }
 
+.botones {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.btn-secundario {
+  background: #fff;
+  color: var(--blue);
+  border: 1px solid var(--blue);
+}
+.btn-secundario:hover {
+  background: #eef2fa;
+}
+
 .link {
   display: inline-block;
   margin-top: 16px;

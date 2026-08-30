@@ -65,17 +65,20 @@ def procesar():
         etiquetas.save(etiquetas_path)
 
         token = uuid.uuid4().hex[:12]
-        out_name = f"pedido_LPN_{token}.xlsx"
-        out_path = os.path.join(OUTPUT_DIR, out_name)
+        out_xlsx_name = f"pedido_LPN_{token}.xlsx"
+        out_pdf_name = f"etiquetas_CODIGO_{token}.pdf"
+        out_xlsx_path = os.path.join(OUTPUT_DIR, out_xlsx_name)
+        out_pdf_path = os.path.join(OUTPUT_DIR, out_pdf_name)
 
-        info = run_matching(pedido_path, etiquetas_path, out_path, workdir)
+        info = run_matching(pedido_path, etiquetas_path, out_xlsx_path, out_pdf_path, workdir)
 
         return render_template(
             "resultado.html",
             n_pdf=info["n_pdf"],
             n_excel=info["n_excel"],
             resumen=info["resumen"],
-            archivo=out_name,
+            archivo_xlsx=out_xlsx_name,
+            archivo_pdf=out_pdf_name,
         )
     except FileNotFoundError as e:
         flash(
@@ -106,11 +109,9 @@ def descargar(archivo):
             pass
         return response
 
-    return send_file(
-        path,
-        as_attachment=True,
-        download_name="pedido_con_LPN.xlsx",
-    )
+    ext = _ext(safe_name)
+    download_name = "etiquetas_con_codigo.pdf" if ext == ".pdf" else "pedido_con_LPN.xlsx"
+    return send_file(path, as_attachment=True, download_name=download_name)
 
 
 @app.errorhandler(413)

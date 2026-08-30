@@ -11,6 +11,7 @@ import subprocess
 import unicodedata
 from collections import Counter
 
+import pymupdf as fitz
 import numpy as np
 import openpyxl
 import xlrd
@@ -249,6 +250,17 @@ def match(excel_rows, pdf_entries):
     return out
 
 
+def categoria_metodo(metodo):
+    """Clasifica el metodo de match en una categoria de confianza para colorear."""
+    if metodo == "SIN COINCIDENCIA":
+        return "bad"
+    if "BAJA" in metodo:
+        return "warn"
+    if metodo.startswith("Descripcion"):
+        return "good"
+    return "ok"
+
+
 def write_output(results, out_path):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -264,9 +276,10 @@ def write_output(results, out_path):
         cell.fill = PatternFill("solid", fgColor="2F5496")
         cell.alignment = Alignment(horizontal="center")
 
-    fill_ok, fill_good, fill_warn, fill_bad = (
-        PatternFill("solid", fgColor=c) for c in ("C6EFCE", "DDEBF7", "FFEB9C", "FFC7CE")
-    )
+    fills = {
+        cat: PatternFill("solid", fgColor=c)
+        for cat, c in zip(("ok", "good", "warn", "bad"), ("C6EFCE", "DDEBF7", "FFEB9C", "FFC7CE"))
+    }
     for r in results:
         row = [
             r["codigo"], r["ean13"], r["codigo_cliente"], r["descripcion"], r["unidad"],
@@ -275,14 +288,7 @@ def write_output(results, out_path):
         ]
         ws.append(row)
         ridx = ws.max_row
-        if r["metodo"] == "SIN COINCIDENCIA":
-            fill = fill_bad
-        elif "BAJA" in r["metodo"]:
-            fill = fill_warn
-        elif r["metodo"].startswith("Descripcion"):
-            fill = fill_good
-        else:
-            fill = fill_ok
+        fill = fills[categoria_metodo(r["metodo"])]
         for c in range(1, len(row) + 1):
             ws.cell(row=ridx, column=c).fill = fill
 
@@ -303,11 +309,50 @@ def write_output(results, out_path):
     return dict(c)
 
 
-def run_matching(xls_path, pdf_path, out_path, workdir):
+def annotate_pdf(pdf_path, results, out_pdf_path):
+    """
+    Genera una copia del PDF de etiquetas con un recuadro en cada pagina
+    mostrando el "Codigo" (columna A del Excel) que le corresponde, para
+    poder imprimir la etiqueta y pegarla en la caja identificada por ese
+    codigo (las cajas no estan identificadas por el Codigo Cliente).
+    El color del recuadro sigue la misma confianza que el Excel de salida.
+    """
+    box_colors = {
+        "ok": (0.78, 0.94, 0.81),
+        "good": (0.87, 0.92, 0.97),
+        "warn": (1, 0.92, 0.61),
+        "bad": (1, 0.78, 0.81),
+    }
+
+    doc = fitz.open(pdf_path)
+    for r in results:
+        pagina = r["pdf_pagina"]
+        if not pagina or pagina > doc.page_count:
+            continue
+        page = doc[pagina - 1]
+        pw = page.rect.width
+        box_w = min(pw - 20, 220)
+        rect = fitz.Rect(10, 10, 10 + box_w, 46)
+        color = box_colors[categoria_metodo(r["metodo"])]
+        page.draw_rect(rect, color=(0, 0, 0), fill=color, width=1)
+        page.insert_textbox(
+            rect,
+            f"CODIGO: {r['codigo']}",
+            fontsize=15,
+            fontname="helv",
+            color=(0, 0, 0),
+            align=fitz.TEXT_ALIGN_CENTER,
+        )
+    doc.save(out_pdf_path)
+    doc.close()
+
+
+def run_matching(xls_path, pdf_path, out_xlsx_path, out_pdf_path, workdir):
     pdf_entries = ocr_pdf(pdf_path, workdir)
     excel_rows = load_excel(xls_path)
     results = match(excel_rows, pdf_entries)
-    resumen = write_output(results, out_path)
+    resumen = write_output(results, out_xlsx_path)
+    annotate_pdf(pdf_path, results, out_pdf_path)
     return {
         "n_pdf": len(pdf_entries),
         "n_excel": len(excel_rows),
