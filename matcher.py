@@ -5,6 +5,7 @@ Empareja el "Codigo" del Excel de pedido con el LPN del PDF de etiquetas.
 Extraido de lpn_matcher.py para ser usado como modulo dentro de la app web.
 """
 
+import io
 import os
 import re
 import subprocess
@@ -17,13 +18,24 @@ import openpyxl
 import xlrd
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from PIL import Image
+from pyzbar.pyzbar import decode as decode_barcode
 from rapidfuzz import fuzz
 from scipy.optimize import linear_sum_assignment
+
+
+def _png_bytes(pil_img):
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def ocr_pdf(pdf_path, workdir):
     pages_dir = os.path.join(workdir, "pages")
     os.makedirs(pages_dir, exist_ok=True)
+    # 200dpi es necesario: a 150dpi Tesseract confunde acentos (p.ej.
+    # "Descripcion" -> "Descripcién"), lo que rompe la extraccion de campos
+    # y empeora el emparejamiento. No bajar esta resolucion.
     subprocess.run(
         ["pdftoppm", "-png", "-r", "200", pdf_path, os.path.join(pages_dir, "pg")],
         check=True,
@@ -32,17 +44,34 @@ def ocr_pdf(pdf_path, workdir):
     results = []
     for i, f in enumerate(files):
         path = os.path.join(pages_dir, f)
-        text = subprocess.run(
-            ["tesseract", path, "stdout", "--psm", "6", "-l", "spa"],
-            capture_output=True,
-            text=True,
-        ).stdout
-        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        full_img = Image.open(path)
+
+        # El LPN se lee decodificando el codigo de barras real (CODE128), no el
+        # texto OCR impreso debajo: el OCR confunde digitos (6/8, 5/6, etc.)
+        # con bastante frecuencia y el codigo de barras es exacto.
         lpn = None
-        if lines:
-            m = re.match(r"^(\d{6,10})$", lines[0])
-            if m:
-                lpn = m.group(1)
+        barcodes = decode_barcode(full_img)
+        if barcodes:
+            lpn = barcodes[0].data.decode()
+
+        # El texto (Sku, Descripcion, UPC, ASN...) ocupa la mitad superior de
+        # la hoja; recortar antes de OCRear reduce el tiempo de Tesseract sin
+        # perder texto (0.45 deja margen de sobra: todo el bloque termina
+        # antes del 45% de la altura de la pagina).
+        crop = full_img.crop((0, 0, full_img.width, int(full_img.height * 0.45)))
+        text = subprocess.run(
+            ["tesseract", "-", "stdout", "--psm", "6", "-l", "spa"],
+            input=_png_bytes(crop),
+            capture_output=True,
+        ).stdout.decode("utf-8", "ignore")
+
+        if not lpn:
+            # respaldo si el codigo de barras no se pudo leer (raro)
+            lines = [l.strip() for l in text.splitlines() if l.strip()]
+            if lines:
+                m = re.match(r"^(\d{6,10})$", lines[0])
+                if m:
+                    lpn = m.group(1)
 
         def grab(label):
             mm = re.search(label + r"\s*:?\s*(.+)", text)

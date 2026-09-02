@@ -17,7 +17,7 @@ Sin Docker, en Linux/macOS puedes instalar las dependencias del sistema y
 correr directo:
 
 ```
-sudo apt-get install poppler-utils tesseract-ocr tesseract-ocr-spa
+sudo apt-get install poppler-utils tesseract-ocr tesseract-ocr-spa libzbar0
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python app.py
