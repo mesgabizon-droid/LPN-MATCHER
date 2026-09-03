@@ -4,6 +4,8 @@ __pycache__/
 venv/
 uploads/*
 outputs/*
+jobs/*
 !uploads/.gitkeep
 !outputs/.gitkeep
+!jobs/.gitkeep
 .env

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<meta http-equiv="refresh" content="3">
+<div class="card">
+  <h2>Procesando...</h2>
+  <div class="spinner"></div>
+  <p class="paso">{{ paso }}</p>
+  <p class="hint small">Esta pagina se actualiza sola cada 3 segundos. No cierres ni recargues manualmente, puede tardar varios minutos si el PDF tiene muchas etiquetas.</p>
+</div>
+{% endblock %}

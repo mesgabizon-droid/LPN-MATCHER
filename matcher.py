@@ -30,7 +30,7 @@ def _png_bytes(pil_img):
     return buf.getvalue()
 
 
-def ocr_pdf(pdf_path, workdir):
+def ocr_pdf(pdf_path, workdir, progress_cb=None):
     pages_dir = os.path.join(workdir, "pages")
     os.makedirs(pages_dir, exist_ok=True)
     # 200dpi es necesario: a 150dpi Tesseract confunde acentos (p.ej.
@@ -41,8 +41,11 @@ def ocr_pdf(pdf_path, workdir):
         check=True,
     )
     files = sorted(os.listdir(pages_dir))
+    total = len(files)
     results = []
     for i, f in enumerate(files):
+        if progress_cb:
+            progress_cb(i, total)
         path = os.path.join(pages_dir, f)
         full_img = Image.open(path)
 
@@ -96,6 +99,8 @@ def ocr_pdf(pdf_path, workdir):
                 "descripcion": descripcion,
             }
         )
+    if progress_cb:
+        progress_cb(total, total)
     return results
 
 
@@ -376,8 +381,8 @@ def annotate_pdf(pdf_path, results, out_pdf_path):
     doc.close()
 
 
-def run_matching(xls_path, pdf_path, out_xlsx_path, out_pdf_path, workdir):
-    pdf_entries = ocr_pdf(pdf_path, workdir)
+def run_matching(xls_path, pdf_path, out_xlsx_path, out_pdf_path, workdir, progress_cb=None):
+    pdf_entries = ocr_pdf(pdf_path, workdir, progress_cb=progress_cb)
     excel_rows = load_excel(xls_path)
     results = match(excel_rows, pdf_entries)
     resumen = write_output(results, out_xlsx_path)
