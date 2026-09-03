@@ -366,7 +366,8 @@ def annotate_pdf(pdf_path, results, out_pdf_path):
         page = doc[pagina - 1]
         pw = page.rect.width
         box_w = min(pw - 20, 220)
-        rect = fitz.Rect(10, 10, 10 + box_w, 46)
+        x0 = (pw - box_w) / 2
+        rect = fitz.Rect(x0, 10, x0 + box_w, 46)
         color = box_colors[categoria_metodo(r["metodo"])]
         page.draw_rect(rect, color=(0, 0, 0), fill=color, width=1)
         page.insert_textbox(
