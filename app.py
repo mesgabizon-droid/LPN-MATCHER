@@ -1,8 +1,10 @@
 import json
+import logging
 import os
 import shutil
 import tempfile
 import threading
+import traceback
 import uuid
 
 from flask import (
@@ -22,6 +24,9 @@ from matcher import run_matching
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-cambia-esto")
 app.config["MAX_CONTENT_LENGTH"] = 40 * 1024 * 1024  # 40 MB
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("lpn_matcher")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
@@ -93,6 +98,7 @@ def _procesar_job(job_id, pedido_path, etiquetas_path, workdir):
             },
         )
     except FileNotFoundError as e:
+        logger.error("Job %s: falta herramienta del sistema:\n%s", job_id, traceback.format_exc())
         _write_job(
             job_id,
             {
@@ -101,6 +107,7 @@ def _procesar_job(job_id, pedido_path, etiquetas_path, workdir):
             },
         )
     except Exception as e:
+        logger.error("Job %s: error procesando:\n%s", job_id, traceback.format_exc())
         _write_job(job_id, {"status": "error", "mensaje": f"Ocurrio un error procesando los archivos: {e}"})
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
@@ -131,20 +138,26 @@ def procesar():
         return redirect(url_for("index"))
 
     workdir = tempfile.mkdtemp(prefix="lpn_")
-    pedido_path = os.path.join(workdir, secure_filename(pedido.filename))
-    etiquetas_path = os.path.join(workdir, secure_filename(etiquetas.filename))
-    pedido.save(pedido_path)
-    etiquetas.save(etiquetas_path)
+    try:
+        pedido_path = os.path.join(workdir, secure_filename(pedido.filename))
+        etiquetas_path = os.path.join(workdir, secure_filename(etiquetas.filename))
+        pedido.save(pedido_path)
+        etiquetas.save(etiquetas_path)
 
-    job_id = uuid.uuid4().hex
-    _write_job(job_id, {"status": "procesando", "paso": "Iniciando...", "pagina": 0, "total": 0})
+        job_id = uuid.uuid4().hex
+        _write_job(job_id, {"status": "procesando", "paso": "Iniciando...", "pagina": 0, "total": 0})
 
-    hilo = threading.Thread(
-        target=_procesar_job, args=(job_id, pedido_path, etiquetas_path, workdir), daemon=True
-    )
-    hilo.start()
+        hilo = threading.Thread(
+            target=_procesar_job, args=(job_id, pedido_path, etiquetas_path, workdir), daemon=True
+        )
+        hilo.start()
 
-    return redirect(url_for("estado", job_id=job_id))
+        return redirect(url_for("estado", job_id=job_id))
+    except Exception:
+        logger.error("Error al iniciar el procesamiento:\n%s", traceback.format_exc())
+        shutil.rmtree(workdir, ignore_errors=True)
+        flash("Ocurrio un error al subir los archivos. Intenta de nuevo.")
+        return redirect(url_for("index"))
 
 
 @app.route("/estado/<job_id>")
@@ -195,6 +208,13 @@ def descargar(archivo):
 @app.errorhandler(413)
 def too_large(e):
     flash("El archivo es demasiado grande (limite 40 MB).")
+    return redirect(url_for("index"))
+
+
+@app.errorhandler(500)
+def error_interno(e):
+    logger.error("Error interno no manejado:\n%s", traceback.format_exc())
+    flash("Ocurrio un error inesperado. Intenta de nuevo; si se repite, revisa los logs del servidor.")
     return redirect(url_for("index"))
 
 
