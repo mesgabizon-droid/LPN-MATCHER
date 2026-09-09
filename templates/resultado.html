@@ -17,10 +17,11 @@
   </table>
 
   <div class="botones">
-    <a class="btn" href="{{ url_for('descargar', archivo=archivo_pdf) }}">Descargar PDF con Codigo (para imprimir y pegar)</a>
+    <a class="btn" href="{{ url_for('descargar', archivo=archivo_pdf) }}">Descargar PDF con Codigo (1 por hoja)</a>
+    <a class="btn btn-secundario" href="{{ url_for('descargar', archivo=archivo_pdf_4up) }}">Descargar PDF 4 por hoja (para cortar en cruz)</a>
     <a class="btn btn-secundario" href="{{ url_for('descargar', archivo=archivo_xlsx) }}">Descargar Excel con LPN</a>
   </div>
-  <p class="hint small">En el PDF, cada etiqueta trae un recuadro con el Codigo de la caja (verde/azul = coincidencia confiable, amarillo = revisar, rojo = sin coincidencia). En el Excel se resaltan las mismas filas.</p>
+  <p class="hint small">En el PDF, cada etiqueta trae un recuadro con el Codigo de la caja (verde/azul = coincidencia confiable, amarillo = revisar, rojo = sin coincidencia). En el Excel se resaltan las mismas filas. El PDF "4 por hoja" trae lineas punteadas para cortar.</p>
   <a class="link" href="{{ url_for('index') }}">&larr; Procesar otro pedido</a>
 </div>
 {% endblock %}

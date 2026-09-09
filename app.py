@@ -78,11 +78,13 @@ def _procesar_job(job_id, pedido_path, etiquetas_path, workdir):
         token = uuid.uuid4().hex[:12]
         out_xlsx_name = f"pedido_LPN_{token}.xlsx"
         out_pdf_name = f"etiquetas_CODIGO_{token}.pdf"
+        out_pdf_4up_name = f"etiquetas_CODIGO_4x1_{token}.pdf"
         out_xlsx_path = os.path.join(OUTPUT_DIR, out_xlsx_name)
         out_pdf_path = os.path.join(OUTPUT_DIR, out_pdf_name)
+        out_pdf_4up_path = os.path.join(OUTPUT_DIR, out_pdf_4up_name)
 
         info = run_matching(
-            pedido_path, etiquetas_path, out_xlsx_path, out_pdf_path, workdir,
+            pedido_path, etiquetas_path, out_xlsx_path, out_pdf_path, out_pdf_4up_path, workdir,
             progress_cb=progress_cb,
         )
 
@@ -95,6 +97,7 @@ def _procesar_job(job_id, pedido_path, etiquetas_path, workdir):
                 "resumen": info["resumen"],
                 "archivo_xlsx": out_xlsx_name,
                 "archivo_pdf": out_pdf_name,
+                "archivo_pdf_4up": out_pdf_4up_name,
             },
         )
     except FileNotFoundError as e:
@@ -179,6 +182,7 @@ def estado(job_id):
             resumen=job["resumen"],
             archivo_xlsx=job["archivo_xlsx"],
             archivo_pdf=job["archivo_pdf"],
+            archivo_pdf_4up=job["archivo_pdf_4up"],
         )
 
     return render_template("procesando.html", job_id=job_id, paso=job.get("paso", "Procesando..."))
@@ -201,7 +205,12 @@ def descargar(archivo):
         return response
 
     ext = _ext(safe_name)
-    download_name = "etiquetas_con_codigo.pdf" if ext == ".pdf" else "pedido_con_LPN.xlsx"
+    if ext != ".pdf":
+        download_name = "pedido_con_LPN.xlsx"
+    elif "4x1" in safe_name:
+        download_name = "etiquetas_4_por_hoja.pdf"
+    else:
+        download_name = "etiquetas_con_codigo.pdf"
     return send_file(path, as_attachment=True, download_name=download_name)
 
 

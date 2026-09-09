@@ -382,12 +382,52 @@ def annotate_pdf(pdf_path, results, out_pdf_path):
     doc.close()
 
 
-def run_matching(xls_path, pdf_path, out_xlsx_path, out_pdf_path, workdir, progress_cb=None):
+def combine_4up(pdf_path, out_pdf_path, sheet_size=(612, 792), margin=18, gap=10):
+    """
+    Junta las etiquetas (ya anotadas con el Codigo) de 4 en 4 en una hoja
+    tamano Carta, en cuadrantes, con lineas punteadas en cruz para cortar.
+    Cada etiqueta se escala manteniendo su proporcion para caber en su
+    cuadrante (sin recortarla ni deformarla).
+    """
+    src = fitz.open(pdf_path)
+    out = fitz.open()
+    sheet_w, sheet_h = sheet_size
+    quad_w = (sheet_w - 2 * margin - gap) / 2
+    quad_h = (sheet_h - 2 * margin - gap) / 2
+
+    n = src.page_count
+    for start in range(0, n, 4):
+        page = out.new_page(width=sheet_w, height=sheet_h)
+        grupo = range(start, min(start + 4, n))
+        for slot, src_idx in enumerate(grupo):
+            fila, col = divmod(slot, 2)
+            x0 = margin + col * (quad_w + gap)
+            y0 = margin + fila * (quad_h + gap)
+
+            src_rect = src[src_idx].rect
+            escala = min(quad_w / src_rect.width, quad_h / src_rect.height)
+            fit_w, fit_h = src_rect.width * escala, src_rect.height * escala
+            fx0 = x0 + (quad_w - fit_w) / 2
+            fy0 = y0 + (quad_h - fit_h) / 2
+            page.show_pdf_page(fitz.Rect(fx0, fy0, fx0 + fit_w, fy0 + fit_h), src, src_idx)
+
+        cx, cy = sheet_w / 2, sheet_h / 2
+        corte = dict(color=(0.6, 0.6, 0.6), dashes="[3 3] 0", width=0.75)
+        page.draw_line((cx, margin * 0.4), (cx, sheet_h - margin * 0.4), **corte)
+        page.draw_line((margin * 0.4, cy), (sheet_w - margin * 0.4, cy), **corte)
+
+    out.save(out_pdf_path)
+    out.close()
+    src.close()
+
+
+def run_matching(xls_path, pdf_path, out_xlsx_path, out_pdf_path, out_pdf_4up_path, workdir, progress_cb=None):
     pdf_entries = ocr_pdf(pdf_path, workdir, progress_cb=progress_cb)
     excel_rows = load_excel(xls_path)
     results = match(excel_rows, pdf_entries)
     resumen = write_output(results, out_xlsx_path)
     annotate_pdf(pdf_path, results, out_pdf_path)
+    combine_4up(out_pdf_path, out_pdf_4up_path)
     return {
         "n_pdf": len(pdf_entries),
         "n_excel": len(excel_rows),
