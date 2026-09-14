@@ -6,6 +6,7 @@ Extraido de lpn_matcher.py para ser usado como modulo dentro de la app web.
 """
 
 import io
+import json
 import os
 import re
 import subprocess
@@ -22,6 +23,53 @@ from PIL import Image
 from pyzbar.pyzbar import decode as decode_barcode
 from rapidfuzz import fuzz
 from scipy.optimize import linear_sum_assignment
+
+CATALOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalogo_chedraui.json")
+
+
+def _cargar_catalogo():
+    """
+    Catalogo maestro de Chedraui/AKSI (UPC -> Codigo), independiente de
+    cualquier pedido especifico. Sirve de respaldo cuando el OCR lee mal
+    un digito del UPC impreso en el PDF: se busca el UPC valido mas
+    parecido en el catalogo en vez de caer directo a comparar descripcion.
+    """
+    try:
+        with open(CATALOGO_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+
+CATALOGO = _cargar_catalogo()
+
+
+def _upc_mas_parecido(upc_ocr, catalogo, max_distancia=1):
+    """
+    Busca en el catalogo el UPC a distancia de Hamming <= max_distancia del
+    UPC leido por OCR (mismo numero de digitos, hasta max_distancia
+    diferentes). Si hay mas de un candidato a la misma distancia minima, se
+    considera ambiguo y no se usa (mejor no adivinar que adivinar mal).
+    """
+    if not upc_ocr:
+        return None
+    mejor = None
+    mejor_dist = max_distancia + 1
+    ambiguo = False
+    for entrada in catalogo:
+        cat_upc = entrada["upc"]
+        if len(cat_upc) != len(upc_ocr):
+            continue
+        dist = sum(1 for a, b in zip(upc_ocr, cat_upc) if a != b)
+        if dist < mejor_dist:
+            mejor_dist = dist
+            mejor = entrada
+            ambiguo = False
+        elif dist == mejor_dist:
+            ambiguo = True
+    if mejor is not None and mejor_dist <= max_distancia and not ambiguo:
+        return mejor
+    return None
 
 
 def _png_bytes(pil_img):
@@ -195,10 +243,12 @@ def size_token(s):
 
 def match(excel_rows, pdf_entries):
     """
-    Empareja en 3 fases:
+    Empareja en 4 fases:
       1) SKU exacto (Sku del PDF == Codigo Cliente del Excel)
       2) UPC/EAN exacto
-      3) Para lo que quede, asignacion OPTIMA GLOBAL (algoritmo hungaro) usando
+      3) UPC aproximado contra el catalogo maestro (corrige 1 digito mal
+         leido por el OCR, solo si hay un unico candidato sin ambiguedad)
+      4) Para lo que quede, asignacion OPTIMA GLOBAL (algoritmo hungaro) usando
          similitud de descripcion + bonus/penalizacion por talla/tamano.
     """
     n_excel, n_pdf = len(excel_rows), len(pdf_entries)
@@ -224,6 +274,19 @@ def match(excel_rows, pdf_entries):
                 results[idx] = (p, "UPC/EAN", 100)
                 used_pdf.add(j)
                 break
+
+    if CATALOGO:
+        for idx, e in enumerate(excel_rows):
+            if results[idx]:
+                continue
+            for j, p in enumerate(pdf_entries):
+                if j in used_pdf:
+                    continue
+                candidato = _upc_mas_parecido(strip_upc(p["upc"]), CATALOGO)
+                if candidato and candidato["codigo"] == e["codigo"]:
+                    results[idx] = (p, "UPC aproximado (catalogo)", 95)
+                    used_pdf.add(j)
+                    break
 
     pending_idx = [idx for idx in range(n_excel) if results[idx] is None]
     pending_pdf = [j for j in range(n_pdf) if j not in used_pdf]

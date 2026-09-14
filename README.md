@@ -52,3 +52,38 @@ Cualquier plataforma que soporte "Deploy from Dockerfile" sirve, por ejemplo:
 - El OCR puede tardar varios minutos con PDFs de muchas paginas; en
   produccion considera subir el timeout del servidor/proxy si el pedido es
   grande (el `Dockerfile` ya arranca gunicorn con `-t 300`).
+
+## Catalogo maestro (catalogo_chedraui.json)
+
+`catalogo_chedraui.json` es el catalogo de productos de Chedraui/AKSI (UPC,
+Codigo, SKU de Chedraui, Descripcion), independiente de cualquier pedido. Se
+usa como respaldo en `match()` (matcher.py): si el OCR lee mal un digito del
+UPC impreso en el PDF y no hay match exacto, se busca el UPC valido mas
+parecido en este catalogo (solo si hay un unico candidato a 1 digito de
+distancia, sin ambiguedad) para no caer directo a la comparacion difusa de
+descripcion.
+
+Para actualizarlo cuando cambie el catalogo de productos, desde un Excel con
+columnas SKU, ARTICULO, #, AKSI (=Codigo), ARTICULO, UPC, Descripcion:
+
+```python
+import openpyxl, json, re
+wb = openpyxl.load_workbook("nuevo_catalogo.xlsx", data_only=True)
+ws = wb.worksheets[0]
+catalogo, vistos = [], set()
+for row in ws.iter_rows(min_row=2, values_only=True):
+    sku, upc, aksi, desc = row[0], row[5], row[3], row[6]
+    if aksi is None or upc is None:
+        continue
+    aksi_str = str(aksi).strip()
+    if aksi_str in vistos:
+        continue
+    vistos.add(aksi_str)
+    catalogo.append({
+        "upc": re.sub(r"\D", "", str(upc)),
+        "codigo": aksi_str,
+        "sku_chedraui": str(sku).strip(),
+        "descripcion": (desc or "").strip(),
+    })
+json.dump(catalogo, open("catalogo_chedraui.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+```
