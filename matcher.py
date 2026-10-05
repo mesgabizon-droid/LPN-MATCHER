@@ -128,7 +128,11 @@ def ocr_pdf(pdf_path, workdir, progress_cb=None):
             mm = re.search(label + r"\s*:?\s*(.+)", text)
             return mm.group(1).strip() if mm else None
 
-        dm = re.search(r"Descripcion:?\s*(.+?)\n(?:\s*(.+?)\n)?Proveedor", text, re.S)
+        # [oó] porque la etiqueta real imprime "Descripción" con tilde; con
+        # -l spa Tesseract la lee bien acentuada y un regex sin tilde no
+        # encontraba nunca el campo, dejando la descripcion en None y
+        # tirando a 0 el puntaje de la fase de comparacion por descripcion.
+        dm = re.search(r"Descripci[oó]n:?\s*(.+?)\n(?:\s*(.+?)\n)?Proveedor", text, re.S)
         descripcion = None
         if dm:
             descripcion = re.sub(
