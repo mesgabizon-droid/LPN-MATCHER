@@ -10,8 +10,10 @@ import json
 import os
 import re
 import subprocess
+import threading
 import unicodedata
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pymupdf as fitz
 import numpy as np
@@ -90,10 +92,8 @@ def ocr_pdf(pdf_path, workdir, progress_cb=None):
     )
     files = sorted(os.listdir(pages_dir))
     total = len(files)
-    results = []
-    for i, f in enumerate(files):
-        if progress_cb:
-            progress_cb(i, total)
+
+    def procesar_pagina(i, f):
         path = os.path.join(pages_dir, f)
         full_img = Image.open(path)
 
@@ -139,20 +139,33 @@ def ocr_pdf(pdf_path, workdir, progress_cb=None):
                 r"\s+", " ", (dm.group(1) or "") + " " + (dm.group(2) or "")
             ).strip()
 
-        results.append(
-            {
-                "page": i + 1,
-                "lpn_barcode": lpn,
-                "orden_compra": grab(r"No\. Orden de Compra"),
-                "cantidad_cajas": grab("Cantidad de Cajas"),
-                "sku": grab("Sku"),
-                "upc": grab("UPC"),
-                "asn": grab("ASN"),
-                "descripcion": descripcion,
-            }
-        )
-    if progress_cb:
-        progress_cb(total, total)
+        return {
+            "page": i + 1,
+            "lpn_barcode": lpn,
+            "orden_compra": grab(r"No\. Orden de Compra"),
+            "cantidad_cajas": grab("Cantidad de Cajas"),
+            "sku": grab("Sku"),
+            "upc": grab("UPC"),
+            "asn": grab("ASN"),
+            "descripcion": descripcion,
+        }
+
+    # Cada pagina llama a tesseract/pdftoppm en un subproceso aparte (I/O, no
+    # CPU de Python), asi que varios hilos pueden solaparse aunque el GIL
+    # siga activo. 4 a la vez es un buen equilibrio entre velocidad y no
+    # saturar la memoria/CPU limitada del plan gratuito de Render.
+    results = [None] * total
+    completados = 0
+    lock = threading.Lock()
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futuros = {ex.submit(procesar_pagina, i, f): i for i, f in enumerate(files)}
+        for fut in as_completed(futuros):
+            i = futuros[fut]
+            results[i] = fut.result()
+            with lock:
+                completados += 1
+                if progress_cb:
+                    progress_cb(completados, total)
     return results
 
 
