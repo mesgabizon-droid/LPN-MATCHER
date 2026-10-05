@@ -449,34 +449,56 @@ def annotate_pdf(pdf_path, results, out_pdf_path):
     doc.close()
 
 
-def combine_4up(pdf_path, out_pdf_path, sheet_size=(612, 792), margin=18, gap=10):
+def _bbox_contenido(page):
     """
-    Junta las etiquetas (ya anotadas con el Codigo) de 4 en 4 en una hoja
-    tamano Carta, en cuadrantes, con lineas punteadas en cruz para cortar.
-    Cada etiqueta se escala manteniendo su proporcion para caber en su
-    cuadrante (sin recortarla ni deformarla).
+    El PDF de Chedraui trae cada etiqueta en una hoja tamano Carta completa,
+    pero lo impreso (barras + texto) solo ocupa una franja chica arriba; el
+    resto es margen en blanco. Esta funcion encuentra el area real con
+    contenido (codigo de barras + texto, incluido el recuadro de Codigo que
+    agrega annotate_pdf) para poder recortar ese margen en combine_4up.
+    """
+    r = fitz.Rect()
+    for dr in page.get_drawings():
+        r |= dr["rect"]
+    for info in page.get_image_info():
+        r |= fitz.Rect(info["bbox"])
+    for block in page.get_text("dict")["blocks"]:
+        r |= fitz.Rect(block["bbox"])
+    return page.rect if r.is_empty else r
+
+
+def combine_4up(pdf_path, out_pdf_path, margin=14, gap=14):
+    """
+    Junta las etiquetas (ya anotadas con el Codigo) de 4 en 4 en una hoja,
+    en cuadrantes, con lineas punteadas en cruz para cortar. Cada etiqueta
+    se recorta a su contenido real (sin el margen en blanco de la hoja
+    original) y se coloca a su tamano original, sin escalar.
     """
     src = fitz.open(pdf_path)
     out = fitz.open()
-    sheet_w, sheet_h = sheet_size
-    quad_w = (sheet_w - 2 * margin - gap) / 2
-    quad_h = (sheet_h - 2 * margin - gap) / 2
-
     n = src.page_count
+    bboxes = [_bbox_contenido(src[i]) for i in range(n)]
+
     for start in range(0, n, 4):
+        grupo = list(range(start, min(start + 4, n)))
+        quad_w = max(bboxes[i].width for i in grupo)
+        quad_h = max(bboxes[i].height for i in grupo)
+        sheet_w = margin * 2 + gap + quad_w * 2
+        sheet_h = margin * 2 + gap + quad_h * 2
         page = out.new_page(width=sheet_w, height=sheet_h)
-        grupo = range(start, min(start + 4, n))
+
         for slot, src_idx in enumerate(grupo):
             fila, col = divmod(slot, 2)
             x0 = margin + col * (quad_w + gap)
             y0 = margin + fila * (quad_h + gap)
 
-            src_rect = src[src_idx].rect
-            escala = min(quad_w / src_rect.width, quad_h / src_rect.height)
-            fit_w, fit_h = src_rect.width * escala, src_rect.height * escala
-            fx0 = x0 + (quad_w - fit_w) / 2
-            fy0 = y0 + (quad_h - fit_h) / 2
-            page.show_pdf_page(fitz.Rect(fx0, fy0, fx0 + fit_w, fy0 + fit_h), src, src_idx)
+            bbox = bboxes[src_idx]
+            fx0 = x0 + (quad_w - bbox.width) / 2
+            fy0 = y0 + (quad_h - bbox.height) / 2
+            page.show_pdf_page(
+                fitz.Rect(fx0, fy0, fx0 + bbox.width, fy0 + bbox.height),
+                src, src_idx, clip=bbox,
+            )
 
         cx, cy = sheet_w / 2, sheet_h / 2
         corte = dict(color=(0.6, 0.6, 0.6), dashes="[3 3] 0", width=0.75)
